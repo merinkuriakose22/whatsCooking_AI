@@ -346,11 +346,25 @@
       background: rgba(244, 223, 203, 0.5);
     }
 
+    .dish-name-container {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
     .dish-name {
       font-size: 1.1rem;
       font-weight: 600;
       color: var(--on-surface);
     }
+
+    .dish-meta {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .dish-meta span.match-high { color: #27ae60; font-weight: bold; }
+    .dish-meta span.match-mid { color: #d35400; font-weight: bold; }
 
     .chevron {
       width: 10px;
@@ -457,7 +471,6 @@
       <p>Upload your recipe book, enter your ingredients, and find out what you can make.</p>
     </div>
 
-    <!-- STEP 1: Upload -->
     <div class="card">
       <div class="card-title">Step 1 — Recipe Book</div>
       <div class="upload-zone" id="upload-zone">
@@ -469,7 +482,6 @@
       <div class="status-pill" id="upload-status"></div>
     </div>
 
-    <!-- STEP 2: Ingredients (pantry tag system) -->
     <div class="card">
       <div class="card-title">Step 2 — Your Pantry</div>
       <div class="pantry-input-container">
@@ -486,7 +498,6 @@
 
     <hr />
 
-    <!-- RESULTS -->
     <div id="dishes-section">
       <div class="card-title" style="margin-bottom:14px;" id="dishes-count"></div>
       <div id="dishes-list"></div>
@@ -513,6 +524,8 @@
     class Blob {
       constructor() { this.init(); }
       init() {
+        width = canvas.width;
+        height = canvas.height;
         this.x = Math.random() * width;
         this.y = Math.random() * height;
         this.radius = Math.random() * 300 + 200;
@@ -720,8 +733,14 @@
       });
     }
 
-    // ── Application Logic ───────────────────────────────────
-    const BASE = "http://127.0.0.1:8000";
+    // ── Production Environment Configuration ─────────────────
+    // If you host the frontend somewhere separate (e.g. Vercel), replace the text inside the quotes with your live Render app link.
+    const CLOUD_BACKEND_URL = "https://your-recipe-backend-url.onrender.com"; 
+
+    const BASE = window.location.origin.includes("localhost") || window.location.origin.includes("127.0.0.1")
+      ? "http://127.0.0.1:8000" 
+      : (CLOUD_BACKEND_URL.startsWith("https") ? CLOUD_BACKEND_URL : window.location.origin);
+
 
     // ── Upload PDF ──────────────────────────────────────────
     document.getElementById("pdf-input").addEventListener("change", async function () {
@@ -741,6 +760,8 @@
         if (res.ok) {
           document.getElementById("upload-label").innerHTML = `<strong>${file.name}</strong>`;
           status.textContent = "Recipe book loaded";
+          status.style.color = "#723600";
+          status.style.background = "#f4dfcb";
           status.style.display = "inline-block";
         } else {
           status.textContent = data.detail || "Upload failed";
@@ -787,15 +808,19 @@
             validDishes.forEach((dish, i) => renderDish(dish, i));
             document.getElementById("dishes-section").style.display = "block";
           } else {
-            document.getElementById("dishes-count").textContent = "No valid dishes found.";
+            document.getElementById("dishes-count").textContent = "No valid dishes found matching these ingredients.";
             document.getElementById("dishes-section").style.display = "block";
           }
         } else {
-          document.getElementById("dishes-count").textContent = data.detail || "No dishes found.";
+          let errorMsg = data.detail || "No dishes found.";
+          if (errorMsg.toLowerCase().includes("no recipe book loaded")) {
+             errorMsg = "⚠️ Please upload a recipe book PDF in Step 1 first!";
+          }
+          document.getElementById("dishes-count").textContent = errorMsg;
           document.getElementById("dishes-section").style.display = "block";
         }
-      } catch {
-        document.getElementById("dishes-count").textContent = "Could not reach backend.";
+      } catch (err) {
+        document.getElementById("dishes-count").textContent = "Could not reach backend application.";
         document.getElementById("dishes-section").style.display = "block";
       }
 
@@ -809,16 +834,25 @@
       const item = document.createElement("div");
       item.className = "dish-item";
 
+      const matchClass = dish.match_percentage > 70 ? 'match-high' : 'match-mid';
+      const missingText = dish.missing.length > 0 ? `Missing: ${dish.missing.join(', ')}` : 'Perfect match!';
+
       const header = document.createElement("div");
       header.className = "dish-header";
       header.id = `header-${index}`;
-      header.innerHTML = `<span class="dish-name">${dish.dish}</span><span class="chevron"></span>`;
+      header.innerHTML = `
+        <div class="dish-name-container">
+          <span class="dish-name">${dish.dish}</span>
+          <span class="dish-meta"><span class="${matchClass}">${dish.match_percentage}% match</span> — ${missingText}</span>
+        </div>
+        <span class="chevron"></span>
+      `;
       header.addEventListener('click', () => toggleRecipe(dish.dish, index));
 
       const body = document.createElement("div");
       body.className = "dish-body";
       body.id = `body-${index}`;
-      body.innerHTML = `<p class="loading-text">Loading recipe...</p>`;
+      body.innerHTML = `<p class="loading-text">Loading instructions from recipe book...</p>`;
 
       item.appendChild(header);
       item.appendChild(body);
